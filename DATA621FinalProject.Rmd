@@ -1,0 +1,545 @@
+---
+title: 'DATA621: Final Project'
+author: "Farhana Akther, Bridget Boakye and Hazal Gunduz"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: 
+    toc: yes
+    toc_depth: '3'
+  html_document:
+    toc: yes
+    toc_depth: '3'
+    toc_float: yes
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r  message=FALSE, warning=FALSE, include=FALSE}
+library(tidyverse)
+library(psych)
+library(caret)
+#library(ggridges)
+library(ggplot2)
+library(psych)
+library(car)
+library(ggridges)
+library(pROC)
+library(caret)
+```
+
+
+
+## **Abstract:**
+
+
+## **Loading and transforming data set:**
+
+### **Loading the data set:**
+
+The dataset utilized in this research has been sourced from Kaggle and is accessible via the following link: [Kaggle Health Dataset](https://www.kaggle.com/datasets/prosperchuks/health-dataset?select=hypertension_data.csv). Upon downloading, the dataset was subsequently uploaded to a GitHub repository to facilitate its access within the RStudio environment to ensure the reproducibility of the study. To import the dataset into RStudio, the read.csv() function from base R will be used and we will utilize the URL of the stored repository. 
+
+
+```{r Data}
+
+set.seed(123)
+
+hypert <- read.csv("https://raw.githubusercontent.com/FarhanaAkther23/DATA621/main/DATA621%20Final%20Project/hypertension_data.csv", header=TRUE, sep=",")
+```
+
+To confirm that the dataset has been loaded correctly and contains all the columns, we can utilize the head() function from Base R. This function conveniently displays the first six rows of the dataset, allowing us to inspect its structure and ensure proper loading.
+
+```{r}
+head(hypert)
+dim(hypert)
+```
+
+Upon inspection, we observe that the dataset has been successfully loaded into our RStudio environment. However, before proceeding with the analysis, it's important to acknowledge that the dataset may require cleaning and transformation to ensure it is suitable for analysis. Let us understand the variables, perform data wrangling and transformation to prepare the dataset for analysis
+
+## Data Prepratation: 
+
+### **Understaing the Colunms**:
+
+*age:* Age of the patient in years (numeric).
+*sex:* patient's gender (1: male; 0: female) (numeric). 
+*cp:* Chest pain type: 0: asymptomatic 1: typical angina 2: atypical angina 3: non-anginal pain (integer). 
+*trestbps:* Resting blood pressure (in mm Hg) (integer).
+*chol:* Serum cholestoral in mg/dl (integer).
+*fbs:* if the patient's fasting blood sugar > 120 mg/dl (1: yes; 0: no) (integer).
+*restecg:* Resting ECG (electrocardiograph) results: 
+    0: normal 
+    1: ST-T wave abnormality (T wave inversions and/or ST elevation or depression of > 0.05 mV) 
+    2: probable or definite left ventricular hypertrophy by Estes' criteria (integer). 
+*thalach:* Maximum heart rate achieved by the patient (integer).
+*exang:* Exercise induced angina, experienced by the patient (1: yes; 0: no) (integer).
+*oldpeak:* ST depression induced by exercise relative to rest (numeric).
+*slope:* The slope of the peak exercise ST segment (integer).
+*ca:* Number of major vessels colored by fluoroscopy (integer).
+*thal:* Type of thalassemia (integer).
+*target:* Presence of hypertension, where 0 indicates absence and 1 indicates presence (integer).
+
+### **Wrangling and Transforming:**
+
+Before proceeding with logistic regression analysis, it's essential to examine the structure of the dataset. We will use the str() function to inspect the types of data in each variable or column. This step will help us understand the composition of the dataset and ensure that it is suitable for logistic regression analysis.
+
+```{r}
+str(hypert)
+```
+
+The code above successfully displays the structure of the dataset hypert. It consists of 26083 observations and 14 variables. Each variable has its corresponding data type, such as numerical (num or int). This information will be helpful for further data analysis and modeling. However, if you look carefully, it seems that some of the columns in the dataset have been imported as numeric or integer data types, while they should be treated as categorical variables or factors. Specifically, columns like sex, cp, fbs, exang, slope, ca, thal, and target are categorical variables based on the dataset description.To address this issue, we'll need to convert these columns to factors in order to properly represent their categorical nature. Before changing data type of any columns we want to look out for any missing values in those rows. we will is.na() to see any missing values. 
+
+```{r}
+sum(is.na(hypert))
+```
+
+we can see that there in total 25 missing values in the data set and if we check column wise all of those missing values are in sex column
+
+```{r}
+(hypert[is.na(hypert$sex),])
+```
+We can observe that apart from 'age' column in the data set every other variable/column has the same value for each of those missing values so we can ignore those rows and since they are only 25 out 26k (way below 5%) observations so we can easily impute it from our data set.
+
+
+```{r}
+hypert <- hypert[!(is.na(hypert$sex)),]
+sum(is.na(hypert))
+```
+
+### Finding Correlation using pairs.panels(): 
+
+In order for us to look at the relationship between all the variables, first we will need to convert the relevant columns to numeric format to ensure they are treated as numeric for our correlation analysis. 
+
+
+```{r}
+# Convert columns to numeric
+hypert$sex <- as.numeric(as.character(hypert$sex))
+hypert$fbs <- as.numeric(as.character(hypert$fbs))
+hypert$restecg <- as.numeric(as.character(hypert$restecg))
+hypert$exang <- as.numeric(as.character(hypert$exang))
+hypert$slope <- as.numeric(as.character(hypert$slope))
+hypert$thal <- as.numeric(as.character(hypert$thal))
+hypert$target <- as.numeric(as.character(hypert$target))
+
+cor(hypert)
+```
+
+
+```{r}
+pairs.panels(hypert[, c(1, 2:6)], main = "Scatter Plot Matrix for Hypertention")
+pairs.panels(hypert[, c(1, 7:11)], main = "")
+pairs.panels(hypert[, c(1, 11:14)], main = "")
+```
+
+The diagonal panels display histograms or density plots of each variable. These plots show the distribution of values for each variable individually. The correlation analysis shows several associations within the dataset. Age shows weak positive correlations with resting blood pressure and weak negative correlations with maximum heart rate during exercise. Chest pain type has moderate positive correlations with maximum heart rate and hypertension presence, while resting blood pressure exhibits weak positive correlations with cholesterol levels. Maximum heart rate shows moderate positive correlations with chest pain type and hypertension presence. Exercise-induced angina and ST depression during exercise have moderate negative correlations with maximum heart rate and hypertension presence. Slope of peak exercise ST segment has moderate positive correlations with maximum heart rate and hypertension presence. There are no significant correlations observed for sex, cholesterol, fasting blood sugar, and restecg. Moreover, there is no apparent multicollinearity issue observed among the independent variables.
+
+#### Managing the data types of the columns for EDA:
+
+In the next step we will manage the data types of the columns. According to the source of the dataset, certain columns such as sex, cp, fbs, exang, slope, ca, thal, and target should be treated as factors. Therefore, we will adjust the data types accordingly. Additionally, to improve clarity and interpretation, we will convert the numeric codes in the sex column to descriptive labels, replacing 0 with "F" (female) and 1 with "M" (male). This ensures consistency and enhances the readability of the dataset.
+
+```{r}
+
+hypert[hypert$sex == 0,]$sex <- "F" # Replacing 0 by F
+hypert[hypert$sex == 1,]$sex <- "M" # Replacing 1 by M
+
+
+hypert$sex <- as.factor(hypert$sex)
+hypert$cp <- as.factor(hypert$cp)
+hypert$fbs <- as.factor(hypert$fbs)
+hypert$restecg <- as.factor(hypert$restecg)
+hypert$exang <- as.factor(hypert$exang)
+hypert$slope <- as.factor(hypert$slope)
+hypert$thal <- as.factor(hypert$thal)
+
+
+hypert$target <- ifelse(test = hypert$target == 0, yes = "Non-Hypertension", no = "Hypertension")
+hypert$target <- as.factor(hypert$target)
+```
+
+Now that we've adjusted the data types of the columns, let's revisit the str() function to ensure that our data frame aligns with the descriptions provided in the data source. This step allows us to verify that the data types and factor levels are consistent with our expectations and the information provided in the source.
+
+```{r}
+str(hypert)
+```
+
+## **Exploratory Data Analysis**
+
+In this section, we will explore various facets of the dataset. We aim to visualize and assess the dispersion of data. We will begin by examining the summary statistics of columns hypothesized to influence hypertension.
+
+
+### Age (age): 
+
+Age is a crucial demographic factor that often correlates with the risk of hypertension. Older individuals are generally more prone to hypertension. Let's take a look at a detailed statistics using the describe() function from the psych package. 
+
+```{r}
+describe(hypert$age)
+```
+Although we thought that the older individuals are generally more prone to hypertension, from the above output we can see that our mean age is around 55-56 years with minimum of 11 and maximum of 98 years old. We can also see the distribution more clearly by plotting a graph. 
+
+```{r}
+# histogram plot of age distribution, vertical line for mean age
+ggplot(data = hypert, aes(x = age, fill = target)) +
+  geom_histogram(color = "black", bins = 25) +
+  geom_vline(xintercept = mean(hypert$age), color = 'red') +
+  labs(x = "Age", y = "Count", title = "Distribution of Age") + 
+  theme_bw() +
+  scale_fill_manual(values = c("lightgray", "darkgray"))
+```
+
+From the graph above we observe a diverse distribution of ages that encompasses a range from young to elderly individuals. Despite the higher mean age, we will explore age as a potential factor contributing to hypertension.
+
+**contingency table:**
+
+We create a contingency table is by using the xtabs() function. This table provides the count of cases in each subgroup. For example, when applying the xtabs() function to the "target" and "age" columns, it yields the number of individuals with and without hypertension in each age subgroup, as illustrated below:
+
+```{r}
+# Create and view  contingency table using xtabs()
+
+xtabs(~target+age, data = hypert)
+```
+
+The table above displays the distribution of individuals across age groups and their respective hypertension status. Each row represents an age group, while the columns represent the counts of individuals with and without hypertension within each age group. For instance, there are 1 individual aged 11 with hypertension and 0 individuals aged 11 without hypertension. This table provides a comprehensive overview of the relationship between age and hypertension status.
+
+
+### Resting Blood Pressure (trestbps):
+
+Resting blood pressure or systolic blood pressure is another significant factor that can contribute to hypertension. It is a fundamental clinical measure directly associated with hypertension. Higher resting blood pressure levels are indicative of hypertension risk. Hypertension is often synonymous with high blood pressure, particularly elevated systolic blood pressure. However, in this study, we aim to explore whether hypertension is solely attributable to high resting systolic blood pressure or if there are additional factors involved. Let's begin by examining the summary statistics using the describe() function:
+
+```{r}
+describe(hypert$trestbps)
+```
+
+The summary statistics indicates that the average resting blood pressure is approximately 131.59 mm Hg, with a standard deviation of about 17.6 mm Hg. The values range from 94 mm Hg to 200 mm Hg, with a median value of 130 mm Hg. The distribution appears slightly skewed to the right (skewness = 0.72), and it has a positive kurtosis value (0.92), suggesting slightly heavier tails than a normal distribution. We can visualize this with a bar graph below: 
+
+```{r}
+# Plotting histogram of resting blood pressure (trestbps) with differentiation based on hypertension status
+ggplot(data = hypert, aes(x = trestbps, fill = factor(target))) +
+  geom_histogram(binwidth = 10, color = "black") +
+  labs(x = "Resting Blood Pressure (mm Hg)", y = "Frequency", title = "Distribution of Resting Blood Pressure") +
+  scale_fill_manual(values = c("lightgray", "darkgray")) +
+  theme_bw()+
+  geom_vline(xintercept=mean(hypert$trestbps), color='red')
+```
+
+The graph shows hypertension at the peak with a frequency of approximately 6000 and non-hypertension at approximately 2500 suggests that the majority of individuals in the dataset are classified as hypertensive rather than non-hypertensive.
+
+This observation is important because it indicates an imbalance in the distribution of hypertension status within the dataset. Such an imbalance can influence the performance and accuracy of predictive models trained on this data, especially as our goal is to predict hypertension. Therefore, it's crucial to address this class imbalance during the modeling process to ensure fair and accurate predictions.
+
+
+Similarly we can also look at the contingency table:
+
+```{r}
+xtabs(~target+trestbps, data = hypert)
+```
+
+The table presents the distribution of individuals based on their resting blood pressure (trestbps) and hypertension status. Each row represents a specific blood pressure value, with columns indicating the counts of individuals with and without hypertension. Notably, there's a diverse distribution of hypertension across different blood pressure levels. While individuals with low systolic blood pressure show instances of hypertension, the number of hypertensive patients decreases as blood pressure approaches the normal range. However, beyond approximately 126 mm Hg, there's a resurgence in the number of hypertensive patients, although there are exceptions. Surprisingly, individuals with extremely high blood pressure readings (at 192 and 200 mm Hg) are not classified as hypertensive.
+
+
+```{r}
+hyper_115 <- hypert|>
+  filter(trestbps == 115)
+hyper_t <- hypert|>
+  filter(trestbps != 115)
+```
+
+
+```{r}
+describe(hyper_115)
+```
+
+
+```{r}
+describe(hyper_t)
+```
+
+Comparing the filtered data frame hyper_115 to the rest of the data hyper_t, we observed distinct differences in their descriptive statistics. In hyper_115, all individuals shared a fixed resting blood pressure of 115 mm Hg, along with a mean age of approximately 57.04 years. Conversely, hyper_t exhibited a wider range of blood pressure values, with a mean resting blood pressure of 131.76 mm Hg and a slightly lower mean age of about 55.64 years. Furthermore, hyper_t displayed higher mean values for cholesterol, heart rate, and other variables compared to hyper_115. These findings suggest that hypertension may involve multiple factors beyond elevated blood pressure alone, such as age and cholesterol levels. Understanding these additional parameters could provide valuable insights into the complexity of hypertension and inform more holistic approaches to its diagnosis and management.
+
+We can also visualize using a density plot to compare the distributions of resting blood pressure between the two groups hyper_115 and hyper_t:
+
+```{r}
+ggplot() +
+  geom_density(data = hyper_115, aes(x = trestbps, fill = "Hyper_115"), alpha = 0.5) +
+  geom_density(data = hyper_t, aes(x = trestbps, fill = "Hyper_t"), alpha = 0.5) +
+  labs(x = "Resting Blood Pressure (mm Hg)", y = "Density", 
+       title = "Comparison of Resting Blood Pressure Distribution") +
+  scale_fill_manual(values = c("Hyper_115" = "blue", "Hyper_t" = "red")) +
+  theme_minimal()
+```
+
+from above it seems like there is a concentration of individuals with hypertension (Hyper_t group) around a resting blood pressure of 125 mm Hg. This could imply that 125 mm Hg is a common or significant blood pressure level among individuals with hypertension in the Hyper_t group.
+
+
+### Fasting Blood Sugar(fbs > 120 mg/dl (1: yes; 0: no):
+
+Elevated fasting blood sugar levels, indicated by values greater than 120 mg/dl, are often associated with conditions such as diabetes mellitus, which is a known risk factor for hypertension. Individuals with diabetes are more likely to develop hypertension due to various physiological mechanisms, including insulin resistance, endothelial dysfunction, and dysregulation of the renin-angiotensin-aldosterone system.
+
+Including fasting blood sugar as a predictor variable in predictive models for hypertension can provide valuable insights into the relationship between glucose metabolism and blood pressure regulation. Individuals with elevated fasting blood sugar levels may have an increased risk of hypertension, and incorporating this variable into predictive models can help identify high-risk populations and guide preventive interventions. Lets check out the how many people with hypertension have a high blood pressure
+
+```{r}
+xtabs(~target+fbs, data = hypert)
+```
+
+From the contingency table reveals that there is a notable difference in the number of individuals classified as hypertensive between the two fasting blood sugar groups. Specifically, there are more individuals with normal fasting blood sugar levels (less than 120 mg/dl) who are hypertensive compared to those with elevated fasting blood sugar levels (120 mg/dl or higher). However, this difference is not overwhelmingly large, suggesting that while fasting blood sugar levels may play a role in hypertension, they are not the sole determinant. Additionally, within each fasting blood sugar group, there is a similar distribution between hypertensive and non-hypertensive individuals, indicating that other variables and factors likely contribute to the development of hypertension.We can also visualize this in the bar graph below. 
+
+```{r}
+ggplot(hyper_t, aes(x = fbs, fill = factor(target))) +
+  geom_bar() +
+  labs(x = "Fasting Blood Sugar", y = "Count", title = "Fasting Blood Sugar by Hypertension Status") +
+  scale_fill_manual(values = c("darkgray", "lightgray"), labels = c("Non-Hypertensive", "Hypertensive")) +
+  theme_minimal()
+```
+
+### Cholesterol (chol: Serum cholestoral in mg/dl):
+
+When cholesterol accumulates in the bloodstream due to insufficient removal by the body, it can adhere to the walls of arteries. This buildup can lead to the condition known as atherosclerosis, characterized by the stiffening and narrowing of arteries over time. Consequently, the heart must exert greater effort to pump blood through these constricted arteries, resulting in an increase in blood pressure. To gain further insight, let's examine the summary statistics for the "cholesterol" column in our dataset using the describe() function:
+
+```{r}
+
+describe(hypert$chol)
+```
+
+
+The summary statistics above reveal that the dataset consists of one variable with 26,058 observations. The mean cholesterol level of approximately 246.29 mg/dl, along with a standard deviation of 51.65 mg/dl, reflects the central tendency and variability of cholesterol values. The median value of 240 mg/dl further signifies the midpoint of the dataset's distribution. The range spanning from 126 mg/dl to 564 mg/dl illustrates the diversity of cholesterol levels among individuals. The positively skewed distribution, indicated by a skewness value of 1.1, and leptokurtic shape with a kurtosis value of 4.15 suggest potential outliers and a heavier tail in the distribution. Considering optimal cardiovascular health, the mean cholesterol level exceeds the recommended average of 200 mg/dl, requires attention to individual health factors and reference ranges utilized by healthcare organizations for accurate interpretation.  We will plot a ridge density plot and a bar plto distrebution to see how cholesterol is distributed in hypertensive and non hypertensive patients:
+
+
+
+```{r}
+ggplot(hyper_t, aes(x = chol, y = target, fill = target)) + 
+  geom_density_ridges(alpha = 0.6, color = 'black') +
+  labs(x = "Cholesterol", y = "", title = "Density Ridges Plot of Cholesterol") +
+  theme_bw() +
+  scale_fill_manual(values = c("red", "blue")) +
+  theme(legend.position = "none")
+```
+
+
+```{r}
+ggplot(hyper_t, aes(x = chol, fill = target)) +
+  geom_histogram(color = "black", bins = 20) +
+  geom_vline(xintercept = mean(hyper_t$chol), color = 'red') +
+  labs(x = "Cholesterol", y = "Count", title = "Distribution of Cholesterol (systolic)") +
+  theme_bw() +
+  scale_fill_manual(values = c("darkgray", "lightgray"))
+```
+
+### Maximum Heart Rate Achieved (thalach): 
+
+The maximum heart rate achieved during exercise can provide insights into cardiovascular fitness and potential risk factors for hypertension. let take a look at the summary statistics.
+
+```{r}
+describe(hypert$thalach)
+```
+
+The summary statistics for the variable thalach (maximum heart rate achieved during exercise) shows the distribution within the dataset with a mean heart rate of approximately 149.64 beats per minute and a standard deviation of 22.87 beats per minute, we get a sense of the average heart rate and the variability around that mean. The median heart rate of 153 beats per minute further emphasizes the central tendency of the data. Notably, the minimum heart rate observed during exercise was 71 beats per minute, while the maximum reached 202 beats per minute, highlighting the range of heart rates among individuals. The slightly negative skewness and near-normal kurtosis suggest a distribution that leans slightly to the left but is generally within a typical range. Together, these statistics offer valuable insights into the cardiovascular fitness levels of the individuals and their potential association with hypertension. Let's also vusialize in a barlot and a density plot. 
+
+```{r}
+ggplot() +
+  geom_histogram(data = hyper_t, mapping = aes(x = thalach, fill = target), color = "black", bins = 20) +
+  theme_bw() +
+  geom_vline(xintercept = mean(hyper_t$thalach), color = 'red') +
+  labs(x = "Maximum heart rate", y = "Count", title = "Distribution of Heart rate") +
+  scale_fill_manual(values = c("darkgray", "gray"))
+```
+
+```{r}
+ggplot(hyper_t, aes(x = thalach, fill = target)) +
+  geom_density(alpha = 0.6) +
+    labs(x = "Maximum heart rate", y = "Density", title = "Density Plot of Maximum Heart Rate") +
+  scale_fill_manual(values = c("red", "blue")) +
+  theme_bw()
+```
+
+The observations from the graph suggest interesting patterns in the relationship between maximum heart rate during exercise and hypertension status. When the maximum heart rate falls within the range of approximately 155-160 beats per minute, the count of individuals classified as hypertensive peaks at around 3800. Conversely, when the maximum heart rate is in the range of 125-130 beats per minute, the count of individuals classified as non-hypertensive reaches a peak of approximately 1700. This implies that there may be an association between maximum heart rate during exercise and hypertension status. Specifically, higher maximum heart rates during exercise appear to be more prevalent among individuals classified as hypertensive, while lower maximum heart rates are associated with a higher count of individuals classified as non-hypertensive. This observation suggests that maximum heart rate during exercise could potentially serve as a predictive factor or indicator for hypertension status,
+
+
+## **BUILDING MODELS:** 
+
+We'll start by splitting the dataset into training and testing sets. With the training set, we'll construct our models, subsequently employing it to predict outcomes using the testing set. To validate our predictions, we can utilize a confusion matrix.
+
+### **Splitting the Dataset:**
+
+We'll divide the dataset into an 80/20 split, reserving 80% for training our model and using the remaining 20% for testing. Essentially, we'll engage in supervised machine learning, employing logistic regression to predict outcomes.
+
+Before we begin, we confirm that our data is not imbalanced by checking the class distribution of the target variable. 
+
+```{r}
+
+class_distribution <- table(hypert$target) / nrow(hypert)
+print(class_distribution)
+
+```
+
+There is a slight imbalance in the data but it is not severe enough to warrant specialized techniques for oversampling. 
+
+```{r}
+set.seed(456) 
+split <- createDataPartition(hypert$target, p = 0.8, list = FALSE)
+train_data <- hypert[split, ]
+test_data <- hypert[-split, ]
+```
+
+
+### **MODEL 1**
+
+In Model 1, we run a baseline model on the entire dataset. 
+
+```{r}
+
+
+m1 <- glm(formula = target ~ ., family = binomial(link = "logit"), data = train_data)
+summary(m1)
+
+```
+
+The baseline logistic regression model shows several key predictors that significantly influence the likelihood of the outcome, hypertention, with various factors showing strong statistical significance. Types of chest pain (cp1, cp2, cp3) and the maximum heart rate achieved (thalach) have negative coefficients, indicating that increases in these variables are associated with a reduced probability of the outcome. Conversely, trestbps (resting blood pressure) and chol (cholesterol levels) are positively associated with the outcome, suggesting that higher values increase the likelihood of the outcome. The model also identifies oldpeak (ST depression induced by exercise relative to rest), slope1 (the slope of the peak exercise ST segment), and ca (number of major vessels colored by fluoroscopy) as significant predictors with positive associations. Exercise-induced angina (exang1) and certain types of thalassemia (thal2) are also significant.
+
+However, age, sexM, fbs1, restecg2, thal3, and slope2 do not show statistically significant effects on the outcome in this model, suggesting that they may not be useful predictors in this context. The model's fit, as indicated by the Akaike Information Criterion (AIC) of  14364 and the substantial reduction in deviance from the null model to the residual, suggests that it adequately captures the relationship between predictors and the outcome. Let's see if we can get a lower AIC from the baseline. 
+
+### The Variance Inflation Factor (VIF): 
+
+Lets check Variance Inflation Factor (VIF) to detect 'multicollinearity' in our models as quantifies the correlation and its strength between independent variables in a regression model. The interpretation of VIF values is as follows:
+
+  - VIF < 1: No correlation
+  - 1 < VIF < 5: Moderate correlation
+  - VIF > 5: Severe correlation
+
+
+```{r}
+knitr::kable(vif(m1))
+```
+
+We focus on the GVIF, as it measures how much the variance of the estimated regression coefficients is increased due to multicollinearity. As we can see, there is little/moderate correlation among the variables so we do not need to address multicollinearity. 
+
+### **MODEL 2**
+
+In this second model, we maintain all of our variables but take the log transformation of the variables that we identified as skewed during EDA (chol, trestbps, and thalach) to see if this will improve our model performance. 
+
+```{r}
+
+m2 <- glm(formula = target ~ age + sex + fbs + cp + restecg + exang + oldpeak + slope + thal + log(chol + 1) + log(trestbps + 1) + log(thalach + 1), family = binomial(link = "logit"), data = train_data)
+summary(m2)
+
+```
+
+
+Model 2, m2, shows significant changes in comparison to m1. The logarithmic transformations of chol, trestbps, and thalach significantly improved the precision of the model's estimates, evident from the strong statistical significance (p < 0.001) and high z-values of these predictors. For instance, log(thalach + 1) has a notably large negative coefficient, indicating a strong inverse relationship between the logarithm of maximum heart rate achieved and the probability of the outcome, which contrasts sharply with m1 where the relationship was only slighly negative. This, log(chol + 1) and log(trestbps + 1), suggests that cholesterol and resting blood pressure have nonlinear effects on the outcome, which were better captured with the logarithmic transformation, thereby potentially resolving some nonlinearities or scaling issues present in m1.
+
+Several predictors like cp1, cp2, cp3, restecg1, exang1, and oldpeak remain highly significant with large z-values, suggesting robust associations with the outcome. The continued significance and strength of these predictors affirm their importance in the model. However, the model's AIC, 15611, is higher, compared with and m1's AIC, 14380, suggesting that m2 may be overfitting or that it includes additional complexity that does not necessarily improve the model's prediction accuracy relative to the number of predictors used. This could indicate that while m2 incorporates more variables or more complex transformations, these adjustments may not provide a proportionate improvement in the model's explanatory power over m1.
+
+
+### **MODEL 3**
+
+In this final model, we return to a simplier model as our more complex model, m2, did not perform as expected. We select predictors that were highly significant (p < 0.05) in the baseline model, cp, restecg1, thalach, exang1, oldpeak, slope1, ca, thal1 without log transformations to assess if they perform better than the baseline model. 
+
+```{r}
+
+m3 <- glm(formula = target ~ cp + restecg + trestbps + thalach + exang + thal + ca + oldpeak + slope, family = binomial(link = "logit"), data = train_data)
+summary(m3)
+
+```
+
+This model, m3, effectively captures the essential predictors with a better balance of model complexity (lower AIC compared to m2 and m1) and accuracy, making it potentially more suitable for practical applications than m2.  Moreover, all of the predictors in this model are highly significant. m3 offers a refinement over m1 in terms of predictive power and parsimony, making it a strong candidate model depending on the specific use case and the importance of various predictors in the practical context.
+
+## 4. **SELECTING MODELS:**
+
+### **Model Evaluation**
+
+For these three model evaluations, let's consider at metric of AUC to gain a comprehensive understanding of each model's performance. Here's how we can compute this metric for each model:
+
+```{r}
+#Model Evaluation
+
+pred_m1 <- predict(m1, newdata = test_data, type = "response")
+pred_m2 <- predict(m2, newdata = test_data, type = "response")
+pred_m3 <- predict(m3, newdata = test_data, type = "response")
+
+#Extract true labels from test data
+true_labels <- test_data$target
+
+#AUC
+auc_m1 <- roc(true_labels, pred_m1)$auc
+auc_m2 <- roc(true_labels, pred_m2)$auc
+auc_m3 <- roc(true_labels, pred_m3)$auc
+
+print("Evaluation Metrics for Model 1:")
+print(paste("AUC:", auc_m1))
+
+print("Evaluation Metrics for Model 2:")
+print(paste("AUC:", auc_m2))
+
+print("Evaluation Metrics for Model 3:")
+print(paste("AUC:", auc_m3))
+```
+
+Conducted an evaluation of three different models (Model 1, Model 2, and Model 3) by predicting their outcomes using test data and comparing them with the true labels. Predictions are made for each model using the predict function, specifying the type of response. The true labels are extracted from the test data. Subsequently, the AUC is calculated for each model using the 'roc' function. To ensure consistency in the levels of factor variables between the predicted and true labels, their levels are matched. This is done by converting the predicted and true labels into factors and setting their levels to be the same.
+
+Finally, the evaluation results for each model are printed, providing insights into their performance across the metric.
+
+
+### **Model Selection**
+
+```{r}
+# Compare AUCs of different models and select the one with the highest AUC
+
+best_model <- NULL
+
+if (auc_m1 > auc_m2 & auc_m1 > auc_m3) {
+  best_model <- "Model 1"
+} else if (auc_m2 > auc_m1 & auc_m2 > auc_m3) {
+  best_model <- "Model 2"
+} else {
+  best_model <- "Model 3"
+}
+
+print(paste("The best model is", best_model, "with AUC:", max(auc_m1, auc_m2, auc_m3)))
+```
+
+
+```{r}
+DF <- data.frame(Model = c("Model 1", "Model 2", "Model 3"),
+                        AUC = c(auc_m1, auc_m2, auc_m3))
+print(DF)
+```
+
+A higher AUC value generally indicates better performance in distinguishing between positive and negative instances. Therefore, based on these results, Model 3 appears to have slightly better performance than Model 1 and Model 2, as it has the highest AUC value. This model exhibits an AUC of 0.924280, indicating its superior discriminatory power compared to Model 1 (AUC: 0.924201) and Model 2 (AUC: 0.908394). While Model 1 also shows a high AUC, Model 3 outperforms it marginally. Model 2, on the other hand, demonstrates a slightly lower AUC compared to both Model 1 and Model 3. 
+
+
+### **Predictions on Evaluation Dataset:**
+
+We make our final prediction, create a dataframe with the predictions.
+
+```{r}
+write.csv(test_data, 'predictions.csv', row.names=FALSE)
+head(test_data)
+```
+
+
+```{r}
+levels(test_data$target) <- c("Non-Hypertension", "Hypertension")
+
+# Calculate AUC for Model, Model 2, Model 3
+AUC_m1 <- roc(test_data$target, as.numeric(pred_m1))
+AUC_m2 <- roc(test_data$target, as.numeric(pred_m2))
+AUC_m3 <- roc(test_data$target, as.numeric(pred_m3))
+```
+
+Here's the plot the ROC curve for the AUC of three of our models:
+
+```{r}
+par(mfrow = c(1,3))
+# Plot ROC curve
+plot(AUC_m1, col = "red", main = "ROC Curve - Model 1")
+text(0.5, 0.5, paste("AUC:", round(AUC_m1$auc, digits = 4)), adj = c(0.5, -1))
+plot(AUC_m2, col = "blue", main = "ROC Curve - Model 2")
+text(0.5, 0.5, paste("AUC:", round(AUC_m2$auc, digits = 4)), adj = c(0.5, -1))
+plot(AUC_m3, col = "green", main = "ROC Curve - Model 3")
+text(0.5, 0.5, paste("AUC:", round(AUC_m3$auc, digits = 4)), adj = c(0.5, -1))
+```
+
+### **CONCLUSION:**
+
+In conclusion, this evaluation process systematically assessed the performance of three distinct models (Model 1, Model 2, and Model 3) in predicting outcomes using test data. Each model's predictions were compared against the true labels extracted from the test dataset. The evaluation metrics included the calculation of the Area Under the ROC Curve (AUC) to quantify the models' discriminative power. Despite encountering challenges such as mismatched levels between predicted and true labels, efforts were made to ensure consistency for accurate evaluation. Visualization techniques, including ROC curve plots, were employed to facilitate a deeper interpretation of the AUC values. The evaluation revealed variations in performance across the models, with Model 3 demonstrating a slightly higher AUC compared to the others. Overall, this evaluation process serves as a crucial step in assessing and selecting the most effective model for the task at hand, thereby enhancing decision-making in practical applications.
+
